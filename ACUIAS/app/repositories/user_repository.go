@@ -21,6 +21,17 @@ func (ur *UserRepository) GetUser(username string) (*models.User, error) {
 
 }
 
+// 用id获取用户
+func (ur *UserRepository) GetUserByID(id int) (*models.User, error) {
+
+	user := &models.User{}
+	db := database.DB
+	err := db.Where("id=?", id).First(user).Error
+
+	return user, err
+
+}
+
 // 新增用户
 func (ur *UserRepository) CreateUser(userPost *models.User) (*models.User, error) {
 

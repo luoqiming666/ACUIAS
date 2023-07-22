@@ -3,6 +3,7 @@ package services
 import (
 	"test.com/hello/app/models"
 	"test.com/hello/app/repositories"
+	"test.com/hello/utils"
 )
 
 // 验证身份服务（用到区块链）
@@ -18,6 +19,8 @@ type UserService interface {
 	DeleteUserService()
 	GetUserService()
 	IsUsernameExist(username string) bool
+	UpdateToken()
+	GetAllUserInfo()
 }
 
 // 数据库资源控制服务
@@ -79,6 +82,34 @@ func (s *Userservice) IsUsernameExist(username string) bool {
 	} else {
 		return true
 	}
+
+}
+
+// 更新用户token
+func (s *Userservice) UpdateToken(user *models.User) (string, bool) {
+
+	//工具控制类
+	ut := &utils.Userutils{}
+
+	randomToken, _ := ut.GenerateToken(uint(user.Id))
+
+	_, err := s.userRepo.UpdateUser(user.Username, "token", randomToken)
+	if err != nil {
+
+		print("generate token failed")
+		return "", false
+
+	}
+
+	return randomToken, true
+
+}
+
+// 获取用户信息
+func (s *Userservice) GetAllUserInfoByID(ID int) (*models.User,error) {
+
+	userGet, err := s.userRepo.GetUserByID(ID)
+	return userGet,err
 
 }
 

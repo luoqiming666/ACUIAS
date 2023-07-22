@@ -1,11 +1,14 @@
 package controllers
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+
 	"test.com/hello/app/models"
 	"test.com/hello/app/services"
+	"test.com/hello/utils"
 )
 
 // 控制器管理
@@ -16,21 +19,69 @@ type ControllerManager struct {
 // 登录
 func (cm *ControllerManager) Login(c *gin.Context) {
 
-	var user models.User
+	var userPost models.User
 
-	// 获取用户表单内容
-	if err := c.ShouldBind(&user); err != nil {
+	ut := &utils.Userutils{}
+
+	if err := c.ShouldBind(&userPost); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"errorPost": err.Error(),
 		})
 		return
 	}
 
-	if user.Username == "" {
+	// 判断用户名是否为空
+	if userPost.Username == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"msg": "please input a username",
+			"msg": "username not allowed to be null",
 		})
 		return
+	}
+
+	// 判断密码是否为空
+	if userPost.Password == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"msg": "password not allowed to be null",
+		})
+		return
+	}
+
+	// 查询用户
+	userGet, _ := cm.userServ.GetUserService(userPost.Username)
+	if userGet.Username == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"msg": "username not correct",
+		})
+		return
+
+	} else {
+
+		// 登录成功
+		if ut.VerifyPassword(userPost.Password, userGet.Password) {
+
+			c.JSON(http.StatusOK, gin.H{
+				"msg": "password correct, login success!",
+			})
+
+			// 服务器生成并存储随机token
+			if randomToken, isGenerate := cm.userServ.UpdateToken(userGet); isGenerate == true {
+				c.JSON(http.StatusOK, gin.H{
+					"msg": "success to generate random token:" + randomToken,
+				})
+			} else {
+				c.JSON(http.StatusOK, gin.H{
+					"msg": "failed to generate random token",
+				})
+
+			}
+
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"msg": "password not correct",
+			})
+
+		}
+
 	}
 
 	// ------------------------区块链业务部分----------------------------
@@ -55,6 +106,8 @@ func (cm *ControllerManager) Register(c *gin.Context) {
 
 	userPost := &models.User{}
 
+	ut := &utils.Userutils{}
+
 	if err := c.ShouldBind(userPost); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"msg": "binding post error!",
@@ -62,7 +115,7 @@ func (cm *ControllerManager) Register(c *gin.Context) {
 		return
 	}
 
-	// 检测空名
+	//判断合法性
 
 	//检查重名
 	if cm.userServ.IsUsernameExist(userPost.Username) {
@@ -74,6 +127,14 @@ func (cm *ControllerManager) Register(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"msg": "posting username is unique",
 		})
+	}
+
+	//名字是否为空
+	if userPost.Username == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"msg": "Username not allow to be null",
+		})
+		return
 	}
 
 	//密码是否为空
@@ -100,6 +161,11 @@ func (cm *ControllerManager) Register(c *gin.Context) {
 		return
 	}
 
+	// 加密密码
+	encodedPassword := ut.EncryptWithMD5(userPost.Password)
+
+	userPost.Password = encodedPassword
+
 	// 新增用户
 	if _, errCreate := cm.userServ.CreateUserService(userPost); errCreate != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -111,6 +177,9 @@ func (cm *ControllerManager) Register(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"msg": "register success",
 		})
+
+		//
+
 		return
 
 	}
@@ -129,4 +198,34 @@ func (cm *ControllerManager) Register(c *gin.Context) {
 	// print(authService)
 
 	// c.JSON(http.StatusCreated, gin.H{"message": "pass，Registration successful"})
+}
+
+// 获取用户个人信息
+func (cm *ControllerManager) GetUserInfo(c *gin.Context) {
+
+	// 判断权限
+	if userIDRow, IDexist := c.Get("userID"); !IDexist {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"err": "key doesn't existed",
+		})
+		return
+	} else {
+
+		if userID, ok := userIDRow.(float64); !ok {
+
+			fmt.Println("failed to get userID")
+			return
+
+		} else {
+			// 获取用户信息
+			if getUser, err := cm.userServ.GetAllUserInfoByID(int(userID)); err != nil {
+				print(getUser)
+			} else {
+				fmt.Println(getUser.Username, getUser.Token)
+			}
+
+		}
+
+	}
+
 }

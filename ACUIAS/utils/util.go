@@ -1,17 +1,27 @@
 package utils
 
 import (
+	"crypto/md5"
+	"encoding/hex"
+	"fmt"
+	"os"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
-	"golang.org/x/crypto/bcrypt"
 )
 
+// 用户工具
+type Userutils struct {
+}
+
 // JWT签名密钥
-var signingKey = []byte("d378y473dudhwqi2903093281sygsyuqq878rkltrug8943")
+var SigningKey = []byte("d378y473dudhwqi2903093281sygsyuqq878rkltrug8943")
+
+// md5加密秘钥
+var Md5PrivateKey = "d378y473dudhwqi2903093281sygsyvwdqb7y4782bwdqkjdq"
 
 // 生成Token
-func generateToken(userID uint) (string, error) {
+func (ut *Userutils) GenerateToken(userID uint) (string, error) {
 	// 创建一个新的Token对象
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"userID": userID,
@@ -19,41 +29,99 @@ func generateToken(userID uint) (string, error) {
 	})
 
 	// 使用密钥进行签名并获取完整的Token字符串
-	tokenString, err := token.SignedString(signingKey)
+	tokenString, err := token.SignedString(SigningKey)
 	if err != nil {
+		print("\n\ncan't generate random token\n\n")
 		return "", err
 	}
 
 	return tokenString, nil
 }
 
-// 加密密码
-func encryptPassword(password string) (string, error) {
-	// 将密码转换为字节数组
-	passwordBytes := []byte(password)
+// 解析并验证Token
+func ParseAndValidateToken(tokenString string) (bool, error) {
+	// 解析Token
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		// 指定使用相同的密钥进行签名验证
+		return SigningKey, nil
+	})
 
-	// 使用bcrypt进行密码哈希处理
-	hashedPassword, err := bcrypt.GenerateFromPassword(passwordBytes, bcrypt.DefaultCost)
 	if err != nil {
-		return "", err
+		return false, err
 	}
 
-	// 将哈希处理后的密码转换为字符串
-	hashedPasswordString := string(hashedPassword)
+	// 检查Token是否有效
+	if !token.Valid {
+		return false, fmt.Errorf("invalid token")
+	}
 
-	return hashedPasswordString, nil
+	// 检查Token是否过期
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok || !token.Valid {
+		return false, fmt.Errorf("invalid token claims")
+	}
+
+	expirationTime := time.Unix(int64(claims["exp"].(float64)), 0)
+	if expirationTime.Before(time.Now()) {
+		return false, fmt.Errorf("token has expired")
+	}
+
+	return true, nil
+}
+
+// 加密函数
+func (ut *Userutils) EncryptWithMD5(password string) string {
+	// 将密码与密钥拼接
+	data := []byte(password + Md5PrivateKey)
+
+	// 使用MD5进行加密
+	hasher := md5.New()
+	hasher.Write(data)
+
+	// 获取加密后的字节数组
+	encryptedData := hasher.Sum(nil)
+
+	// 将字节数组转换为字符串
+	encryptedString := hex.EncodeToString(encryptedData)
+
+	return encryptedString
 }
 
 // 验证密码
-func verifyPassword(password, hashedPassword string) error {
-	// 将哈希处理后的密码转换为字节数组
-	hashedPasswordBytes := []byte(hashedPassword)
+func (ut *Userutils) VerifyPassword(password, hashedPassword string) bool {
 
-	// 验证密码是否正确
-	err := bcrypt.CompareHashAndPassword(hashedPasswordBytes, []byte(password))
-	if err != nil {
-		return err
+	// 校验密码
+	passwordVerify := ut.EncryptWithMD5(password)
+
+	// 密码正确
+	if hashedPassword == passwordVerify {
+		return true
+	} else {
+		return false
 	}
 
-	return nil
+}
+
+// 写入文件
+func (ut *Userutils) WriteFile(filepath string, data interface{}) {
+	f, err := os.Create(filepath)
+	if err != nil {
+		fmt.Println("err occur", err.Error())
+		return
+	}
+	defer f.Close()
+
+	byteData, ok := data.([]byte)
+	if !ok {
+		fmt.Println("can't convert to byte")
+		return
+	}
+
+	_, err = f.Write(byteData)
+	if err != nil {
+		fmt.Println("can't write file")
+		return
+
+	}
+
 }
